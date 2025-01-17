@@ -16,27 +16,43 @@ def simulacao_monte_carlo(data, media_retornos_diarios, desvio_padrao_retornos_d
 
     return precos_simulados[1:, :]
 
+# Função para calcular dias úteis
+def calcular_dias_uteis(data_inicial, data_final):
+    dias = pd.date_range(start=data_inicial, end=data_final, freq='B')  # Considera apenas dias úteis
+    return len(dias)
+
 # Aplicativo Streamlit para Monte Carlo
 def main():
     st.title("Simulação Monte Carlo de Preços")
 
-    # Seleção do tipo de ativo
-    tipo_ativo = st.selectbox("Selecione o tipo de ativo", ["Açúcar", "Dólar"])
+    # Entrada do usuário para o ativo
+    ativo = st.text_input("Insira o código do ativo (exemplo: 'SB=F' para Açúcar, 'USDBRL=X' para Dólar):", value="SB=F")
 
     # Carregar dados do Yahoo Finance
-    ativo = "SB=F" if tipo_ativo == "Açúcar" else "USDBRL=X"
-    data = yf.download(ativo, start="2013-01-01", end="2099-01-01")
+    data = yf.download(ativo, start="2013-01-01", end=pd.to_datetime('today').strftime('%Y-%m-%d'))
+    if data.empty:
+        st.error("Não foi possível carregar os dados. Verifique o código do ativo.")
+        return
+
     data['Daily Return'] = data['Close'].pct_change()
     media_retornos_diarios = data['Daily Return'].mean()
     desvio_padrao_retornos_diarios = data['Daily Return'].std()
 
-    # Configuração da simulação
-    dias_simulados = st.slider("Dias a serem simulados", min_value=1, max_value=252, value=30)
-    num_simulacoes = st.number_input("Número de simulações", min_value=100, max_value=1000000, value=10000, step=1000)
+    # Seleção da data final da simulação
+    data_simulacao = st.date_input("Escolha a data final da simulação", value=pd.to_datetime('2025-01-01'))
+    dias_simulados = calcular_dias_uteis(pd.to_datetime('today').date(), data_simulacao)
+
+    # Input do valor desejado
+    valor_simulado = st.number_input("Qual valor deseja simular (R$)?", value=float(data['Close'].iloc[-1]))
+
+    # Configuração de limites
     limite_inferior = st.number_input("Limite inferior de preço (R$)", value=data['Close'].iloc[-1] - 10)
     limite_superior = st.number_input("Limite superior de preço (R$)", value=data['Close'].iloc[-1] + 10)
-    valor_simulado = st.number_input("Valor para análise (R$)", value=float(data['Close'].iloc[-1]))
 
+    # Número de simulações
+    num_simulacoes = st.number_input("Número de simulações", min_value=100, max_value=1000000, value=10000, step=1000)
+
+    # Botão para iniciar a simulação
     if st.button("Iniciar Simulação"):
         simulacoes = simulacao_monte_carlo(data, media_retornos_diarios, desvio_padrao_retornos_diarios, dias_simulados, num_simulacoes, limite_inferior, limite_superior)
 
