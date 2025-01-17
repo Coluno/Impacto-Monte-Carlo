@@ -1,52 +1,13 @@
 import streamlit as st
-import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-
-# Configurações de estilo do seaborn
-sns.set_style("whitegrid")
-
-# Valores padrão
-valores_padrao = {
-    "Açúcar": {
-        "arquivo_csv": 'Dados Históricos - Açúcar NY nº11 Futuros (6).csv',
-        "valor_minimo_padrao": 20.0,
-        "limite_inferior": 15,
-        "limite_superior": 35
-    },
-    "Dólar": {
-        "arquivo_csv": 'USD_BRL Dados Históricos (2).csv',
-        "valor_minimo_padrao": 5.0,
-        "limite_inferior": 4,
-        "limite_superior": 6
-    },
-    "SBV24": {
-        "arquivo_csv": 'sbv24.csv',
-        "valor_minimo_padrao": 20.0,
-        "limite_inferior": 15,
-        "limite_superior": 35
-    }
-}
-
-# Função para carregar e processar os dados do CSV
-def carregar_dados(tipo_ativo):
-    config = valores_padrao[tipo_ativo]
-    data = pd.read_csv(config["arquivo_csv"])
-    data = data.rename(columns={'Último': 'Close', 'Data': 'Date'})
-    data['Date'] = pd.to_datetime(data['Date'], format='%d.%m.%Y')
-    data = data.sort_values(by='Date', ascending=True)
-    data['Close'] = data['Close'].str.replace(',', '.').astype(float)
-    data.set_index('Date', inplace=True)
-    data['Daily Return'] = data['Close'].pct_change()
-    
-    return data, config["valor_minimo_padrao"], config["limite_inferior"], config["limite_superior"]
+import pandas as pd
+import yfinance as yf
+import plotly.graph_objects as go
 
 # Função para simulação Monte Carlo
-def simulacao_monte_carlo(media_retornos_diarios, desvio_padrao_retornos_diarios, dias_simulados, num_simulacoes, limite_inferior, limite_superior):
+def simulacao_monte_carlo(data, media_retornos_diarios, desvio_padrao_retornos_diarios, dias_simulados, num_simulacoes, limite_inferior, limite_superior):
     retornos_diarios_simulados = np.random.normal(media_retornos_diarios, desvio_padrao_retornos_diarios, (dias_simulados, num_simulacoes))
-
-    preco_inicial = data['Close'].iloc[-1]
+    preco_inicial = float(data['Close'].iloc[-1])
     precos_simulados = np.ones((dias_simulados + 1, num_simulacoes)) * preco_inicial
 
     for dia in range(1, dias_simulados + 1):
@@ -55,69 +16,56 @@ def simulacao_monte_carlo(media_retornos_diarios, desvio_padrao_retornos_diarios
 
     return precos_simulados[1:, :]
 
-# Configuração do título do aplicativo Streamlit e remoção da barra lateral
-st.set_page_config(page_title="Simulação Monte Carlo de Preços", page_icon="📈", layout="wide")
+# Aplicativo Streamlit para Monte Carlo
+def main():
+    st.title("Simulação Monte Carlo de Preços")
 
-# Exibir a imagem
-st.markdown('<img src="https://ibea.com.br/wp-content/uploads/2020/10/Capturar1.png" alt="logo" style="width:200px;">', unsafe_allow_html=True)
+    # Seleção do tipo de ativo
+    tipo_ativo = st.selectbox("Selecione o tipo de ativo", ["Açúcar", "Dólar"])
 
-# Adicionar espaço antes do título
-st.write("")
-
-# Título do sidebar
-st.sidebar.title('Simulações de Monte Carlo')
-
-# Menu suspenso para selecionar o tipo de ativo
-tipo_ativo = st.sidebar.selectbox("Selecione o tipo de ativo", ["Açúcar", "Dólar", "SBV24"])
-
-# Input dos valores desejados
-tempo_desejado = st.sidebar.slider("Para quantos dias você quer avaliar o preço?", min_value=1, max_value=180, value=30)
-valor_minimo = st.sidebar.number_input("Digite o valor de teste desejado:", value=valores_padrao[tipo_ativo]["valor_minimo_padrao"])
-
-# Botão para simular
-if st.sidebar.button("Simular"):
-    # Carregar dados do CSV correspondente ao tipo de ativo selecionado
-    data, valor_minimo_padrao, limite_inferior, limite_superior = carregar_dados(tipo_ativo)
-
-    # Calcular média e desvio padrão dos retornos diários
+    # Carregar dados do Yahoo Finance
+    ativo = "SB=F" if tipo_ativo == "Açúcar" else "USDBRL=X"
+    data = yf.download(ativo, start="2013-01-01", end="2099-01-01")
+    data['Daily Return'] = data['Close'].pct_change()
     media_retornos_diarios = data['Daily Return'].mean()
     desvio_padrao_retornos_diarios = data['Daily Return'].std()
 
-    # Simulação Monte Carlo para próximos 6 meses
-    dias_simulados = tempo_desejado
-    num_simulacoes = 1000000
+    # Configuração da simulação
+    dias_simulados = st.slider("Dias a serem simulados", min_value=1, max_value=252, value=30)
+    num_simulacoes = st.number_input("Número de simulações", min_value=100, max_value=1000000, value=10000, step=1000)
+    limite_inferior = st.number_input("Limite inferior de preço (R$)", value=data['Close'].iloc[-1] - 10)
+    limite_superior = st.number_input("Limite superior de preço (R$)", value=data['Close'].iloc[-1] + 10)
+    valor_simulado = st.number_input("Valor para análise (R$)", value=float(data['Close'].iloc[-1]))
 
-    simulacoes = simulacao_monte_carlo(media_retornos_diarios, desvio_padrao_retornos_diarios, dias_simulados, num_simulacoes, limite_inferior, limite_superior)
+    if st.button("Iniciar Simulação"):
+        simulacoes = simulacao_monte_carlo(data, media_retornos_diarios, desvio_padrao_retornos_diarios, dias_simulados, num_simulacoes, limite_inferior, limite_superior)
 
-    # Número de dias desejados para a previsão
-    dias_previsao = tempo_desejado
+        # Estatísticas
+        media_simulada = np.mean(simulacoes[-1])
+        percentil_20 = np.percentile(simulacoes[-1], 20)
+        percentil_80 = np.percentile(simulacoes[-1], 80)
+        prob_acima_valor = np.mean(simulacoes[-1] > valor_simulado) * 100
+        prob_abaixo_valor = np.mean(simulacoes[-1] < valor_simulado) * 100
 
-    # Pegar os últimos preços simulados para os próximos dias
-    precos_finais_simulados = simulacoes[-dias_previsao:]
+        # Gráfico de Simulação
+        fig = go.Figure()
+        for i in range(min(100, num_simulacoes)):  # Plotar até 100 simulações
+            fig.add_trace(go.Scatter(x=np.arange(1, dias_simulados + 1), y=simulacoes[:, i], mode='lines', line=dict(width=0.8), name=f'Simulação {i+1}'))
+        fig.update_layout(title="Simulações Monte Carlo", xaxis_title="Dias", yaxis_title="Preço Simulado", showlegend=False)
+        st.plotly_chart(fig)
 
-    # Calcular probabilidades com base nos preços finais simulados
-    probabilidade_abaixo = (precos_finais_simulados < valor_minimo).mean() * 100
-    probabilidade_acima = (precos_finais_simulados >= valor_minimo).mean() * 100
-    media_simulada = precos_finais_simulados.mean()
+        # Gráfico de Histograma
+        fig_hist = go.Figure()
+        fig_hist.add_trace(go.Histogram(x=simulacoes[-1], nbinsx=100, marker_color='blue', opacity=0.75))
+        fig_hist.update_layout(title="Distribuição de Preços Simulados", xaxis_title="Preço Simulado", yaxis_title="Frequência")
+        st.plotly_chart(fig_hist)
 
-    # Exibição dos resultados
-    st.write("Probabilidade de estar abaixo de {} pontos nos próximos {} dias:".format(valor_minimo, dias_previsao), "<span style='color:green'>{:.2f}%</span>".format(probabilidade_abaixo), unsafe_allow_html=True)
-    st.write("Probabilidade de estar acima de {} pontos nos próximos {} dias:".format(valor_minimo, dias_previsao), "<span style='color:green'>{:.2f}%</span>".format(probabilidade_acima), unsafe_allow_html=True)
-    st.write("Valor médio dos preços simulados nos próximos {} dias:".format(dias_previsao), "<span style='color:green'>{:.2f}</span>".format(media_simulada.mean()), unsafe_allow_html=True)
+        # Exibir resultados
+        st.write(f"Média dos valores simulados: **{media_simulada:.2f}**")
+        st.write(f"Percentil 20: **{percentil_20:.2f}**")
+        st.write(f"Percentil 80: **{percentil_80:.2f}**")
+        st.write(f"Probabilidade de o preço estar acima do valor inserido: **{prob_acima_valor:.2f}%**")
+        st.write(f"Probabilidade de o preço estar abaixo do valor inserido: **{prob_abaixo_valor:.2f}%**")
 
-    # Visualização das simulações e estatísticas
-    st.subheader("Visualização das Simulações Monte Carlo para Próximos {} Dias".format(dias_previsao))
-    fig, ax = plt.subplots(figsize=(8, 4))  # Criar a figura explicitamente
-
-    # Plotar as simulações
-    for i in range(50):  # Mantido 50 simulações
-        ax.plot(simulacoes[:, i], linewidth=0.5, alpha=0.3)  # Reduzido a largura da linha e a opacidade para melhorar a visualização
-
-    plt.xlabel("Dias")
-    plt.ylabel("Preço de Fechamento")
-    plt.ylim(limite_inferior, limite_superior)  # Limitando o eixo y conforme o ativo selecionado
-    plt.grid(axis='y')  # Adicionando linhas de grade no eixo horizontal
-    plt.grid(False, axis='x')  # Removendo linhas de grade no eixo vertical
-
-    # Exibindo o gráfico no Streamlit
-    st.pyplot(fig)
+if __name__ == "__main__":
+    main()
