@@ -1,7 +1,5 @@
-altair
+streamlit
 numpy
 pandas
-pydeck
-streamlit
-matplotlib
-seaborn
+yfinance
+plotly
