@@ -46,8 +46,8 @@ def main():
     valor_simulado = st.number_input("Qual valor deseja simular (R$)?", value=float(data['Close'].iloc[-1]))
 
     # Configuração de limites
-    limite_inferior = st.number_input("Limite inferior de preço (R$)", value=data['Close'].iloc[-1] - 10)
-    limite_superior = st.number_input("Limite superior de preço (R$)", value=data['Close'].iloc[-1] + 10)
+    limite_inferior = st.number_input("Limite inferior de preço (R$)", value=float(data['Close'].iloc[-1]) - 10)
+    limite_superior = st.number_input("Limite superior de preço (R$)", value=float(data['Close'].iloc[-1]) + 10)
 
     # Número de simulações
     num_simulacoes = st.number_input("Número de simulações", min_value=100, max_value=1000000, value=10000, step=1000)
