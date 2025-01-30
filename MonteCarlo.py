@@ -30,7 +30,7 @@ def monte_carlo():
     
     start_date = date(2013, 1, 1)
     today = date.today()
-    data = yf.download(ativo, start=start_date, end=today)
+    data = yf.download(ativo, start=start_date, end=today, auto_adjust=True, multi_level_index=False)
     
     data['Retornos'] = data['Close'].pct_change()
     media_retornos = data['Retornos'].mean()
